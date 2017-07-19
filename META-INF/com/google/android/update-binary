@@ -39,6 +39,7 @@ mount /data
 mount /preload
 
 # Remove theme files in /system
+test -f /system/system/build.prop && root="/system"
 suimg=$(ls /data/magisk.img || ls /cache/magisk.img) 2>/dev/null
 MAGISKBIN="$(echo $suimg | sed 's~.img~~g')"
 [ -d "$MAGISKBIN" -a -f "$MAGISKBIN/magisk" -a -f "$MAGISKBIN/util_functions.sh" ] && oldMagisk=0 || oldMagisk=1
@@ -87,7 +88,6 @@ if [ "$suimg" ] && [ "$oldMagisk" -eq "0" ]; then
         ui_print "Attempting to clean /system instead"
         mount -o rw,remount /system
         mount /system
-        test -f /system/system/build.prop && root="/system"
         if [ -f "/tmp/delete.list" ]; then
             while IFS='' read item; do
                 ui_print " => $item"
@@ -107,7 +107,6 @@ else
     mount -o rw,remount /system
     mount /system
     ui_print "Deleting theme files from /system"
-    test -f /system/system/build.prop && root="/system"
     if [ -f "/tmp/delete.list" ]; then
         while IFS='' read item; do
             ui_print " => $item"
@@ -126,7 +125,8 @@ fi
 # Custom script
 if [ -f "/tmp/post-uninstall.sh" ]; then
     ui_print "Running post-uninstallation script"
-    chmod 0755 "/tmp/post-uninstall.sh" && /tmp/post-uninstall.sh "$OUTFD" "$ZIPFILE"
+    [ ! -z "$root" ] && target="$root/system" || target="/system"
+    chmod 0755 "/tmp/post-uninstall.sh" && /tmp/post-uninstall.sh "$OUTFD" "$target"
 fi
 
 # Wipe Dalvik
