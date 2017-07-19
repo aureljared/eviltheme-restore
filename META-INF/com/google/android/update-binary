@@ -1,0 +1,151 @@
+#!/sbin/sh
+# Eviltheme by Jared Dantis (@aureljared)
+# Licensed under GPL v3
+# https://github.com/aureljared/eviltheme
+OUTFD=/proc/self/fd/$2
+ZIPFILE="$3"
+
+# Embedded mode support (from @osm0sis)
+readlink /proc/$$/fd/$2 2>/dev/null | grep /tmp >/dev/null;
+if [ "$?" -eq "0" ]; then
+    # rerouted to log file, so suppress recovery ui commands
+    OUTFD=/proc/self/fd/0
+    # try to find the actual fd (pipe with parent updater likely started as 'update-binary 3 fd zipfile')
+    for FD in $(ls /proc/$$/fd); do
+        readlink /proc/$$/fd/$FD 2>/dev/null | grep pipe >/dev/null
+        if [ "$?" -eq "0" ]; then
+            ps | grep " 3 $FD " | grep -v grep >/dev/null
+            if [ "$?" -eq "0" ]; then
+                OUTFD=/proc/self/fd/$FD
+                break
+            fi
+        fi
+    done
+fi
+ui_print() { echo "ui_print ${1} " >> $OUTFD; }
+
+# Initialize
+ui_print ""
+ui_print "Uninstalling $themeId"
+ui_print "------------------"
+unzip -o "$ZIPFILE" 'delete.list' 'bytecode.list' 'eviltheme.prop' -d "/tmp"
+. /tmp/eviltheme.prop
+
+# Mount
+ui_print "Mounting filesystems"
+mount -o ro /system
+mount /cache
+mount /data
+mount /preload
+
+# Remove theme files in /system
+suimg=$(ls /data/magisk.img || ls /cache/magisk.img) 2>/dev/null
+MAGISKBIN="$(echo $suimg | sed 's~.img~~g')"
+[ -d "$MAGISKBIN" -a -f "$MAGISKBIN/magisk" -a -f "$MAGISKBIN/util_functions.sh" ] && oldMagisk=0 || oldMagisk=1
+if [ "$suimg" ] && [ "$oldMagisk" -eq "0" ]; then
+    # Magisk 13.1+
+    sumnt="/$(basename $suimg .img)"
+    target="$sumnt/$themeId"
+
+    # Mount image
+    ui_print "Mounting magisk.img"
+    test ! -e $sumnt && mkdir $sumnt
+    mount -t ext4 -o rw,noatime $suimg $sumnt
+    for i in 0 1 2 3 4 5 6 7; do
+        case `mount` in
+            *" $sumnt "*) break;;
+        esac;
+        loop=/dev/block/loop$i
+        if [ ! -f "$loop" -o ! -b "$loop" ]; then
+            mknod $loop b 7 $i
+        fi
+        losetup $loop $suimg && mount -t ext4 -o loop $loop $sumnt
+    done
+
+    # Does it actually exist?
+    if [ -d "$target" ]; then
+        # Get size of theme from eviltheme.prop or by sizing Magisk module folder
+        [ ! -z "$themeSize" ] && needSizeM="$themeSize" || needSizeM="$(du -sm $target | cut -f1)"
+
+        # Delete module folder
+        ui_print "Deleting Magisk module $themeId"
+        rm -fr "$target"
+
+        # Calculate new size
+        ui_print "Calculating new size"
+        curBlocks=$(e2fsck -n $suimg 2>/dev/null | grep $suimg | cut -d, -f3 | cut -d\  -f2)
+        curSize=$(echo "$curBlocks" | cut -d/ -f2)
+        curSizeM=$((curSize * 4 / 1024))
+        newSizeM=$((curSizeM - needSizeM))
+
+        # Resize
+        ui_print "Trying to resize $suimg to $newSizeM MB"
+        umount $sumnt && resize2fs $suimg ${newSizeM}M
+    else
+        # Remove theme files from /system
+        ui_print "$target not found"
+        ui_print "Attempting to clean /system instead"
+        mount -o rw,remount /system
+        mount /system
+        test -f /system/system/build.prop && root="/system"
+        if [ -f "/tmp/delete.list" ]; then
+            while IFS='' read item; do
+                ui_print " => $item"
+                filePath="$(dirname $item)"
+                fileRoot="$(echo $filePath | cut -f2 -d/)"
+                [ "$fileRoot" == "system" ] && rm -fr "$root/$item" || rm -fr $item
+            done < /tmp/delete.list
+        fi
+
+        # Restore files
+        ui_print "Restoring deleted files"
+        unzip -o "$ZIPFILE" 'system/*' -d "$root/"
+        [ -d "/preload" ] && unzip -o "$ZIPFILE" 'preload/*' -d "/"
+    fi
+else
+    # Remove theme files
+    mount -o rw,remount /system
+    mount /system
+    ui_print "Deleting theme files from /system"
+    test -f /system/system/build.prop && root="/system"
+    if [ -f "/tmp/delete.list" ]; then
+        while IFS='' read item; do
+            ui_print " => $item"
+            filePath="$(dirname $item)"
+            fileRoot="$(echo $filePath | cut -f2 -d/)"
+            [ "$fileRoot" == "system" ] && rm -fr "$root/$item" || rm -fr $item
+        done < /tmp/delete.list
+    fi
+
+    # Restore files
+    ui_print "Restoring deleted files"
+    unzip -o "$ZIPFILE" 'system/*' -d "$root/"
+    [ -d "/preload" ] && unzip -o "$ZIPFILE" 'preload/*' -d "/"
+fi
+
+# Wipe Dalvik
+ui_print "Deleting necessary bytecode"
+if [ -f "/tmp/bytecode.list" ]; then
+    while IFS='' read item; do
+        ui_print " => $item"
+        rm -f "/data/dalvik-cache/arm/$item@classes.dex"
+        rm -f "/data/dalvik-cache/arm64/$item@classes.dex"
+        rm -f "/cache/dalvik-cache/arm/$item@classes.dex"
+        rm -f "/cache/dalvik-cache/arm64/$item@classes.dex"
+        rm -f "/data/dalvik-cache/arm/$item@classes.art"
+        rm -f "/data/dalvik-cache/arm64/$item@classes.art"
+        rm -f "/cache/dalvik-cache/arm/$item@classes.art"
+        rm -f "/cache/dalvik-cache/arm64/$item@classes.art"
+    done < /tmp/bytecode.list
+fi
+
+# Finish
+ui_print "Unmounting filesystems"
+umount /cache
+umount /system
+umount /data
+umount /preload
+
+# Done
+ui_print "Done."
+exit 0
