@@ -106,7 +106,7 @@ else
     # Remove theme files
     mount -o rw,remount /system
     mount /system
-    ui_print "Deleting theme files from /system"
+    ui_print "Deleting theme files"
     if [ -f "/tmp/delete.list" ]; then
         while IFS='' read item; do
             ui_print " => $item"
