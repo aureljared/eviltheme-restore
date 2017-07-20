@@ -28,7 +28,7 @@ ui_print() { echo "ui_print ${1} " >> $OUTFD; }
 ui_print ""
 ui_print "Uninstalling $themeId"
 ui_print "------------------"
-unzip -o "$ZIPFILE" 'delete.list' 'bytecode.list' 'eviltheme.prop' 'post-uninstall.sh' -d "/tmp"
+unzip -o "$ZIPFILE" 'delete.list' 'bytecode.list' 'eviltheme.prop' 'pre-uninstall.sh' 'post-uninstall.sh' -d "/tmp"
 . /tmp/eviltheme.prop
 
 # Mount
@@ -38,8 +38,15 @@ mount /cache
 mount /data
 mount /preload
 
+# Custom pre-uninstallation script
+[ -d "/system/system" ] && root="/system" || root=""
+if [ -f "/tmp/pre-uninstall.sh" ]; then
+    ui_print "Running pre-uninstallation script"
+    [ ! -z "$root" ] && target="$root/system" || target="/system"
+    chmod 0755 "/tmp/pre-uninstall.sh" && /tmp/pre-uninstall.sh "$OUTFD" "$target"
+fi
+
 # Remove theme files in /system
-test -f /system/system/build.prop && root="/system"
 suimg=$(ls /data/magisk.img || ls /cache/magisk.img) 2>/dev/null
 MAGISKBIN="$(echo $suimg | sed 's~.img~~g')"
 [ -d "$MAGISKBIN" -a -f "$MAGISKBIN/magisk" -a -f "$MAGISKBIN/util_functions.sh" ] && oldMagisk=0 || oldMagisk=1
@@ -121,10 +128,9 @@ else
     [ -d "/preload" ] && unzip -o "$ZIPFILE" 'preload/*' -d "/"
 fi
 
-# Custom script
+# Custom post-uninstallation script
 if [ -f "/tmp/post-uninstall.sh" ]; then
     ui_print "Running post-uninstallation script"
-    [ ! -z "$root" ] && target="$root/system" || target="/system"
     chmod 0755 "/tmp/post-uninstall.sh" && /tmp/post-uninstall.sh "$OUTFD" "$target"
 fi
 
