@@ -25,11 +25,11 @@ fi
 ui_print() { echo "ui_print ${1} " >> $OUTFD; }
 
 # Initialize
-ui_print ""
-ui_print "Uninstalling $themeId"
-ui_print "------------------"
 unzip -o "$ZIPFILE" 'delete.list' 'bytecode.list' 'eviltheme.prop' 'pre-uninstall.sh' 'post-uninstall.sh' -d "/tmp"
 . /tmp/eviltheme.prop
+ui_print ""
+ui_print "Uninstalling $themeId"
+ui_print "-----------------------"
 
 # Mount
 ui_print "Mounting filesystems"
@@ -91,10 +91,11 @@ if [ "$suimg" ]; then
     else
         # Remove theme files from /system
         ui_print "$target not found"
-        ui_print "Attempting to clean /system instead"
         mount -o rw,remount /system
         mount /system
+
         if [ -f "/tmp/delete.list" ]; then
+            ui_print "Cleaning /system instead"
             while IFS='' read item; do
                 ui_print " => $item"
                 filePath="$(dirname $item)"
@@ -109,11 +110,12 @@ if [ "$suimg" ]; then
         [ -d "/preload" ] && unzip -o "$ZIPFILE" 'preload/*' -d "/"
     fi
 else
-    # Remove theme files
     mount -o rw,remount /system
     mount /system
-    ui_print "Deleting theme files"
+
+    # Remove theme files
     if [ -f "/tmp/delete.list" ]; then
+        ui_print "Deleting theme files"
         while IFS='' read item; do
             ui_print " => $item"
             filePath="$(dirname $item)"
@@ -135,8 +137,8 @@ if [ -f "/tmp/post-uninstall.sh" ]; then
 fi
 
 # Wipe Dalvik
-ui_print "Deleting necessary bytecode"
 if [ -f "/tmp/bytecode.list" ]; then
+    ui_print "Deleting necessary bytecode"
     while IFS='' read item; do
         ui_print " => $item"
         rm -f "/data/dalvik-cache/arm/$item@classes.dex"
