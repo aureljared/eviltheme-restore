@@ -43,8 +43,7 @@ test -f /system/system/build.prop && root="/system"
 suimg=$(ls /data/magisk.img || ls /cache/magisk.img) 2>/dev/null
 MAGISKBIN="$(echo $suimg | sed 's~.img~~g')"
 [ -d "$MAGISKBIN" -a -f "$MAGISKBIN/magisk" -a -f "$MAGISKBIN/util_functions.sh" ] && oldMagisk=0 || oldMagisk=1
-if [ "$suimg" ] && [ "$oldMagisk" -eq "0" ]; then
-    # Magisk 13.1+
+if [ "$suimg" ]; then
     sumnt="/$(basename $suimg .img)"
     target="$sumnt/$themeId"
 
